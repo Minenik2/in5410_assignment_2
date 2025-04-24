@@ -57,7 +57,7 @@ for name, (model, filename) in models.items():
     # Evaluating SMAPE (more stable MAPE when values are close to zero)
     smape = 100 * np.mean(2 * np.abs(y_pred - y_true) / (np.abs(y_true) + np.abs(y_pred) + 1e-3))
     accuracy = 100 - smape
-    print(f"{name} Prediction Accuracy: {accuracy:.2f}%")
+    print(f"{name} Prediction Accuracy (SMAPE): {accuracy:.2f}%")
 
 #
 # PLOTTING DATA
