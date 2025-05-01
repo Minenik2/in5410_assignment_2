@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 from sklearn.metrics import mean_squared_error
+from math import sqrt
 
 # Load and prepare data
 
@@ -18,6 +19,7 @@ solution_df = pd.read_csv("Solution.csv")
 
 # Remove all columns from TrainData file except TIMESTAMP and Power
 train_df = train_df[['TIMESTAMP', 'POWER']]
+
 train_df['TIMESTAMP'] = pd.to_datetime(train_df['TIMESTAMP'], format='%Y%m%d %H:%M')
 solution_df['TIMESTAMP'] = pd.to_datetime(solution_df['TIMESTAMP'], format='%Y%m%d %H:%M')
 
@@ -156,7 +158,7 @@ predictions = {
 # plt.tight_layout()
 # plt.show()
 
-fig, ax = plt.subplots(figsize=(14, 7))
+fig, ax = plt.subplots(figsize=(10, 6))
 
 # Plot the true values (always visible)
 true_line, = ax.plot(test_timestamps, y_true, label='True Power', color='black', linewidth=2, alpha=0.8)
@@ -173,7 +175,7 @@ lines = {}
 for model_name, color in model_colors.items():
     y_pred = predictions[model_name]
     line, = ax.plot(test_timestamps, y_pred, label=f'{model_name} Prediction',
-                    linestyle='--', color=color, alpha=0.9)
+                    color=color)
     lines[model_name] = line
 
 ax.set_title('Wind Power Forecasts vs True Power (Nov 2013)')
@@ -193,23 +195,23 @@ def make_toggle_func(model_name):
     return toggle
 
 # Add buttons to toggle each forecast curve
-button_positions = [(0.1, 0.01), (0.3, 0.01), (0.5, 0.01), (0.7, 0.01)]
+button_positions = [(0.1, 0.02), (0.3, 0.02), (0.5, 0.02), (0.7, 0.02)]
 buttons = []
 for (model_name, pos) in zip(lines.keys(), button_positions):
-    ax_button = plt.axes([pos[0], pos[1], 0.18, 0.05])
+    ax_button = plt.axes([pos[0], pos[1], 0.1, 0.04])
     button = Button(ax_button, model_name)
     button.on_clicked(make_toggle_func(model_name))
     buttons.append(button)
 
 plt.show()
-
+    
 # Compare forecasting accuracy RMSE
 true_vals = solution_df['POWER'].values
 
-rmse_lr = np.sqrt(mean_squared_error(true_vals, lr_preds))
-rmse_svr = np.sqrt(mean_squared_error(true_vals, svr_preds))
-rmse_ann = np.sqrt(mean_squared_error(true_vals, ann_preds))
-rmse_rnn = np.sqrt(mean_squared_error(true_vals, rnn_preds))
+rmse_lr = sqrt(mean_squared_error(true_vals, lr_preds))
+rmse_svr = sqrt(mean_squared_error(true_vals, svr_preds))
+rmse_ann = sqrt(mean_squared_error(true_vals, ann_preds))
+rmse_rnn = sqrt(mean_squared_error(true_vals, rnn_preds))
 
 # Display results in a table
 results_df = pd.DataFrame({
