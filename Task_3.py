@@ -19,7 +19,6 @@ solution_df = pd.read_csv("Solution.csv")
 
 # Remove all columns from TrainData file except TIMESTAMP and Power
 train_df = train_df[['TIMESTAMP', 'POWER']]
-
 train_df['TIMESTAMP'] = pd.to_datetime(train_df['TIMESTAMP'], format='%Y%m%d %H:%M')
 solution_df['TIMESTAMP'] = pd.to_datetime(solution_df['TIMESTAMP'], format='%Y%m%d %H:%M')
 
@@ -77,7 +76,7 @@ criterion = rnn.MSELoss()
 optimizer = torch.optim.Adam(rnn_model.parameters(), lr=0.001)
 
 # Training loop
-for epoch in range(20):
+for epoch in range(5):
     for x_batch, y_batch in train_loader:
         output = rnn_model(x_batch)
         loss = criterion(output, y_batch)
@@ -131,78 +130,34 @@ predictions = {
     'ANN': ann_preds,
     'RNN': rnn_preds
 }
+
 # Plotting data
+
+# plt.subplots(figsize=(10,6))
 # Linear Regression and Support Vector Regression
-# plt.figure(figsize=(15,5))
-# plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
-# plt.plot(solution_df['TIMESTAMP'], lr_preds, label='Linear Regression', linestyle='--')
-# plt.plot(solution_df['TIMESTAMP'], svr_preds, label='SVR', linestyle='--')
-# plt.title("Wind Power Forecast - LR vs SVR")
-# plt.xlabel("Timestamp")
-# plt.ylabel("Power")
-# plt.legend()
-# plt.grid(True)
-# plt.tight_layout()
-# plt.show()
+plt.subplots(figsize=(10,6))
+plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
+plt.plot(solution_df['TIMESTAMP'], lr_preds, label='Linear Regression')
+plt.plot(solution_df['TIMESTAMP'], svr_preds, label='SVR')
+plt.title("Wind Power Forecast - LR vs SVR")
+plt.xlabel("Timestamp")
+plt.ylabel("Power")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
 # # Artificial Neural Network and Recurrent Neural Network
-# plt.figure(figsize=(15,5))
-# plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
-# plt.plot(solution_df['TIMESTAMP'], ann_preds, label='ANN', linestyle='--')
-# plt.plot(solution_df['TIMESTAMP'], rnn_preds, label='RNN', linestyle='--')
-# plt.title("Wind Power Forecast - ANN vs RNN")
-# plt.xlabel("Timestamp")
-# plt.ylabel("Power")
-# plt.legend()
-# plt.grid(True)
-# plt.tight_layout()
-# plt.show()
-
-fig, ax = plt.subplots(figsize=(10, 6))
-
-# Plot the true values (always visible)
-true_line, = ax.plot(test_timestamps, y_true, label='True Power', color='black', linewidth=2, alpha=0.8)
-
-# Define model colors and plot predictions
-model_colors = {
-    'Linear Regression': 'blue',
-    'SVR': 'orange',
-    'ANN': 'green',
-    'RNN': 'red'
-}
-
-lines = {}
-for model_name, color in model_colors.items():
-    y_pred = predictions[model_name]
-    line, = ax.plot(test_timestamps, y_pred, label=f'{model_name} Prediction',
-                    color=color)
-    lines[model_name] = line
-
-ax.set_title('Wind Power Forecasts vs True Power (Nov 2013)')
-ax.set_xlabel('Timestamp')
-ax.set_ylabel('Normalized Wind Power')
-ax.legend(loc='upper right')
-ax.grid(True)
-plt.xticks(rotation=45)
+plt.subplots(figsize=(10,6))
+plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
+plt.plot(solution_df['TIMESTAMP'], ann_preds, label='ANN')
+plt.plot(solution_df['TIMESTAMP'], rnn_preds, label='RNN')
+plt.title("Wind Power Forecast - ANN vs RNN")
+plt.xlabel("Timestamp")
+plt.ylabel("Power")
+plt.legend()
+plt.grid(True)
 plt.tight_layout()
-
-# Create toggle functions
-def make_toggle_func(model_name):
-    def toggle(event):
-        line = lines[model_name]
-        line.set_visible(not line.get_visible())
-        plt.draw()
-    return toggle
-
-# Add buttons to toggle each forecast curve
-button_positions = [(0.1, 0.02), (0.3, 0.02), (0.5, 0.02), (0.7, 0.02)]
-buttons = []
-for (model_name, pos) in zip(lines.keys(), button_positions):
-    ax_button = plt.axes([pos[0], pos[1], 0.1, 0.04])
-    button = Button(ax_button, model_name)
-    button.on_clicked(make_toggle_func(model_name))
-    buttons.append(button)
-
 plt.show()
     
 # Compare forecasting accuracy RMSE
