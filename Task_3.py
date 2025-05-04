@@ -15,9 +15,8 @@ from math import sqrt
 # Load datasets with datetime parsing
 train_df = pd.read_csv("TrainData.csv", parse_dates=['TIMESTAMP'])
 solution_df = pd.read_csv("Solution.csv", parse_dates=['TIMESTAMP'])
-
+template_df = pd.read_csv("ForecastTemplate.csv", parse_dates=['TIMESTAMP'])
 train_df = train_df[['TIMESTAMP', 'POWER']]
-# solution_df = solution_df[['TIMESTAMP', 'POWER']]
 
 # Create lag features
 def create_lag_features(df, window_size=24):
@@ -137,7 +136,7 @@ y_pred_rnn = target_scaler.inverse_transform(y_pred_rnn_scaled).flatten()
 # Save forecasts
 def save_forecast(filename, predictions):
     pd.DataFrame({
-        'TIMESTAMP': solution_df['TIMESTAMP'],
+        'TIMESTAMP': template_df['TIMESTAMP'].copy(),
         'POWER': predictions
     }).to_csv(filename, index=False)
 
@@ -161,6 +160,20 @@ rmse_results_df = pd.DataFrame({
 print(f"Forecast RMSE Evaluation Nov 2013")
 print(rmse_results_df.sort_values(by='RMSE'))
 
+# Evaluating SMAPE (more stable MAPE when values are close to zero)
+smape_lr = 100 * np.mean(2 * np.abs(y_pred_lr - true_power) / (np.abs(true_power) + np.abs(y_pred_lr) + 1e-3))
+accuracy_lr = 100 - smape_lr
+smape_svr = 100 * np.mean(2 * np.abs(y_pred_svr - true_power) / (np.abs(true_power) + np.abs(y_pred_svr) + 1e-3))
+accuracy_svr = 100 - smape_svr
+smape_ann = 100 * np.mean(2 * np.abs(y_pred_ann - true_power) / (np.abs(true_power) + np.abs(y_pred_ann) + 1e-3))
+accuracy_ann = 100 - smape_ann
+smape_rnn = 100 * np.mean(2 * np.abs(y_pred_rnn - true_power) / (np.abs(true_power) + np.abs(y_pred_rnn) + 1e-3))
+accuracy_rnn = 100 - smape_rnn
+print(f"LR Prediction Accuracy (SMAPE): {accuracy_lr:.2f}%")
+print(f"SVR Prediction Accuracy (SMAPE): {accuracy_svr:.2f}%")
+print(f"ANN Prediction Accuracy (SMAPE): {accuracy_ann:.2f}%")
+print(f"RNN Prediction Accuracy (SMAPE): {accuracy_rnn:.2f}%")
+
 # Plot LR vs SVR
 plt.figure(figsize=(12, 6))
 plt.plot(forecast_df['TIMESTAMP'], y_pred_lr, label=f'LR Forecast, RMSE={rmse_lr:.4f}', color='blue')
@@ -178,7 +191,7 @@ plt.show()
 # Plot ANN vs RNN
 plt.figure(figsize=(12, 6))
 plt.plot(forecast_df['TIMESTAMP'], y_pred_ann, label=f'ANN Forecast, RMSE={rmse_ann:.4f}', color='green')
-plt.plot(forecast_df['TIMESTAMP'], y_pred_rnn, label=f'RNN Forecast, RMSE={rmse_rnn:.4f}', color='yellow')
+plt.plot(forecast_df['TIMESTAMP'], y_pred_rnn, label=f'RNN Forecast, RMSE={rmse_rnn:.4f}', color='orange')
 plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
 plt.xlabel("Time")
 plt.ylabel("POWER")
