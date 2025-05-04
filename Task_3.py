@@ -176,8 +176,8 @@ print(f"RNN Prediction Accuracy (SMAPE): {accuracy_rnn:.2f}%")
 
 # Plot LR vs SVR
 plt.figure(figsize=(12, 6))
-plt.plot(forecast_df['TIMESTAMP'], y_pred_lr, label=f'LR Forecast, RMSE={rmse_lr:.4f}', color='blue')
-plt.plot(forecast_df['TIMESTAMP'], y_pred_svr, label=f'SVR Forecast, RMSE={rmse_svr:.4f}', color='red')
+plt.plot(forecast_df['TIMESTAMP'], y_pred_lr, label='LR Forecast', color='blue')
+plt.plot(forecast_df['TIMESTAMP'], y_pred_svr, label='SVR Forecast', color='red')
 plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
 plt.xlabel("Time")
 plt.ylabel("POWER")
@@ -190,8 +190,8 @@ plt.show()
 
 # Plot ANN vs RNN
 plt.figure(figsize=(12, 6))
-plt.plot(forecast_df['TIMESTAMP'], y_pred_ann, label=f'ANN Forecast, RMSE={rmse_ann:.4f}', color='green')
-plt.plot(forecast_df['TIMESTAMP'], y_pred_rnn, label=f'RNN Forecast, RMSE={rmse_rnn:.4f}', color='orange')
+plt.plot(forecast_df['TIMESTAMP'], y_pred_ann, label='ANN Forecast', color='green')
+plt.plot(forecast_df['TIMESTAMP'], y_pred_rnn, label='RNN Forecast', color='orange')
 plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
 plt.xlabel("Time")
 plt.ylabel("POWER")
