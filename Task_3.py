@@ -3,201 +3,178 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVR
 from sklearn.neural_network import MLPRegressor
-import torch
-import torch.nn as rnn
-from torch.utils.data import DataLoader, TensorDataset, random_split
 from sklearn.preprocessing import MinMaxScaler
-import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset, random_split
+import matplotlib.pyplot as plt
 from math import sqrt
 
-# Load data
-# Load datasets with datetime parsing
-train_df = pd.read_csv("TrainData.csv", parse_dates=['TIMESTAMP'])
-solution_df = pd.read_csv("Solution.csv", parse_dates=['TIMESTAMP'])
-template_df = pd.read_csv("ForecastTemplate.csv", parse_dates=['TIMESTAMP'])
-train_df = train_df[['TIMESTAMP', 'POWER']]
+# Data Preparation Functions
+def load_and_prepare_data():
+    train_df = pd.read_csv("TrainData.csv", parse_dates=['TIMESTAMP'])[['TIMESTAMP', 'POWER']]
+    solution_df = pd.read_csv("Solution.csv", parse_dates=['TIMESTAMP'])
+    template_df = pd.read_csv("ForecastTemplate.csv", parse_dates=['TIMESTAMP'])
 
-# Create lag features
+    combined_df = pd.concat([train_df, solution_df], ignore_index=True)
+    combined_df.sort_values('TIMESTAMP', inplace=True)
+    return train_df, solution_df, template_df, combined_df
+
 def create_lag_features(df, window_size=24):
     df_lagged = df.copy()
     for lag in range(1, window_size + 1):
         df_lagged[f'lag_{lag}'] = df_lagged['POWER'].shift(lag)
     return df_lagged.dropna()
 
-# Create combined dataset for continuity in time series
-combined_df = pd.concat([train_df, solution_df], ignore_index=True)
-combined_df.sort_values('TIMESTAMP', inplace=True)
+def scale_data(x, y):
+    feature_scaler = MinMaxScaler()
+    target_scaler = MinMaxScaler()
+    x_scaled = feature_scaler.fit_transform(x)
+    y_scaled = target_scaler.fit_transform(y)
+    return x_scaled, y_scaled, feature_scaler, target_scaler
 
-# Apply lag feature creation
-window_size = 24
-combined_lagged = create_lag_features(combined_df, window_size)
+# Model Training Functions
+def train_models(x_train_scaled, y_train_scaled):
+    models = {}
 
-# Split the lagged data into train and forecast sets
-train_sized = combined_lagged[combined_lagged['TIMESTAMP'] < pd.to_datetime('2013-11-01')]
-forecast_df = combined_lagged[
-    (combined_lagged['TIMESTAMP'] >= pd.to_datetime('2013-11-01')) &
-    (combined_lagged['TIMESTAMP'] <= pd.to_datetime('2013-11-30 23:00:00'))
-]
+    # Linear Regression
+    lr = LinearRegression()
+    lr.fit(x_train_scaled, y_train_scaled)
+    models['LR'] = lr
 
-# Prepare features and target
-x_train = train_sized.drop(columns=['TIMESTAMP', 'POWER'])
-y_train = train_sized['POWER'].values.reshape(-1, 1)
+    # SVR
+    svr = SVR(kernel='rbf')
+    svr.fit(x_train_scaled, y_train_scaled.ravel())
+    models['SVR'] = svr
 
-# Scale features and target
-feature_scaler = MinMaxScaler()
-target_scaler = MinMaxScaler()
-x_train_scaled = feature_scaler.fit_transform(x_train)
-y_train_scaled = target_scaler.fit_transform(y_train)
+    # ANN
+    ann = MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=1000, early_stopping=True)
+    ann.fit(x_train_scaled, y_train_scaled.ravel())
+    models['ANN'] = ann
 
-# Train LR model 
-lr_model = LinearRegression()
-lr_model.fit(x_train_scaled, y_train_scaled)
+    return models
 
-# Train Support Vector Regression using RBF Kernel
-svr_model = SVR(kernel='rbf')
-svr_model.fit(x_train_scaled, y_train_scaled.ravel())
-
-# Train Artificial Neural Network Model
-ann_model = MLPRegressor(hidden_layer_sizes=(64, 32), max_iter=1000, early_stopping=True)
-ann_model.fit(x_train_scaled, y_train_scaled.ravel())
-
-# Recurrent Neural Network Model Definition
-class RNNModel(rnn.Module):
+# RNN Model
+class RNNModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=64, num_layers=2, output_size=1):
-        super(RNNModel, self).__init__()
-        self.RNN = rnn.RNN(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = rnn.Linear(hidden_size, output_size)
-        
+        super().__init__()
+        self.RNN = nn.RNN(input_size, hidden_size, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, output_size)
+
     def forward(self, x):
         out, _ = self.RNN(x)
-        out = self.fc(out[:, -1, :])
-        return out
+        return self.fc(out[:, -1, :])
 
-x_tensor = torch.from_numpy(x_train_scaled.reshape(-1, window_size, 1).astype(np.float32))
-y_tensor = torch.from_numpy(y_train_scaled.astype(np.float32))
+def train_rnn_model(x_scaled, y_scaled, window_size=24, epochs=100):
+    x_tensor = torch.from_numpy(x_scaled.reshape(-1, window_size, 1).astype(np.float32))
+    y_tensor = torch.from_numpy(y_scaled.astype(np.float32))
 
-full_dataset = TensorDataset(x_tensor, y_tensor)
-train_len = int(len(full_dataset) * 0.8)
-val_len = len(full_dataset) - train_len
-train_dataset, val_dataset = random_split(full_dataset, [train_len, val_len])
+    dataset = TensorDataset(x_tensor, y_tensor)
+    train_len = int(0.8 * len(dataset))
+    train_dataset, val_dataset = random_split(dataset, [train_len, len(dataset) - train_len])
 
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 
+    model = RNNModel()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    criterion = nn.MSELoss()
 
-# Train RNN Model
-rnn_model = RNNModel()
-criterion = rnn.MSELoss()
-optimizer = torch.optim.Adam(rnn_model.parameters(), lr=0.001)
-
-for epoch in range(100):
-    rnn_model.train()
-    train_loss = 0
-    for x_batch, y_batch in train_loader:
-        output = rnn_model(x_batch)
-        loss = criterion(output, y_batch)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        train_loss += loss.item()
-        
-    # Validation
-    rnn_model.eval()
-    val_loss = 0
-    with torch.no_grad():
-        for x_batch, y_batch in val_loader:
-            output = rnn_model(x_batch)
+    for epoch in range(epochs):
+        model.train()
+        train_loss = 0
+        for x_batch, y_batch in train_loader:
+            output = model(x_batch)
             loss = criterion(output, y_batch)
-            val_loss += loss.item()
-            
-    print(f"Epoch {epoch + 1}, Train Loss: {train_loss / len(train_loader):.4f}, Val Loss: {val_loss / len(val_loader):.4f}")
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
 
-# Forecasting
-x_pred = forecast_df.drop(columns=['TIMESTAMP', 'POWER'])
-x_pred_scaled = feature_scaler.transform(x_pred)
+        model.eval()
+        val_loss = sum(criterion(model(xb), yb).item() for xb, yb in val_loader)
+        print(f"Epoch {epoch + 1}, Train Loss: {train_loss / len(train_loader):.4f}, Val Loss: {val_loss / len(val_loader):.4f}")
 
-y_pred_lr_scaled = lr_model.predict(x_pred_scaled)
-y_pred_lr = target_scaler.inverse_transform(y_pred_lr_scaled).flatten()
+    return model
 
-y_pred_svr_scaled = svr_model.predict(x_pred_scaled)
-y_pred_svr = target_scaler.inverse_transform(y_pred_svr_scaled.reshape(-1, 1)).flatten()
+# Forecasting and Evaluation
+def forecast(models, x_pred_scaled, target_scaler, rnn_model=None, window_size=24):
+    forecasts = {}
+    for name, model in models.items():
+        y_pred_scaled = model.predict(x_pred_scaled).reshape(-1, 1)
+        forecasts[name] = target_scaler.inverse_transform(y_pred_scaled).flatten()
 
-y_pred_ann_scaled = ann_model.predict(x_pred_scaled)
-y_pred_ann = target_scaler.inverse_transform(y_pred_ann_scaled.reshape(-1, 1)).flatten()
+    if rnn_model:
+        x_tensor = torch.from_numpy(x_pred_scaled.reshape(-1, window_size, 1).astype(np.float32))
+        with torch.no_grad():
+            y_pred_rnn_scaled = rnn_model(x_tensor).numpy()
+        forecasts['RNN'] = target_scaler.inverse_transform(y_pred_rnn_scaled).flatten()
 
-x_pred_tensor = torch.from_numpy(x_pred_scaled.reshape(-1, window_size, 1).astype(np.float32))
-rnn_model.eval()
-with torch.no_grad():
-    y_pred_rnn_scaled = rnn_model(x_pred_tensor).numpy() 
-y_pred_rnn = target_scaler.inverse_transform(y_pred_rnn_scaled).flatten()
+    return forecasts
 
+def evaluate_forecasts(forecasts, true_values):
+    results = []
+    for name, preds in forecasts.items():
+        rmse = sqrt(mean_squared_error(true_values, preds))
+        smape = 100 * np.mean(2 * np.abs(preds - true_values) / (np.abs(preds) + np.abs(true_values) + 1e-3))
+        results.append({'Model': name, 'RMSE': rmse, 'SMAPE': smape, 'Accuracy': 100 - smape})
+    return pd.DataFrame(results).sort_values('RMSE')
 
-# Save forecasts
-def save_forecast(filename, predictions):
-    pd.DataFrame({
-        'TIMESTAMP': template_df['TIMESTAMP'].copy(),
-        'POWER': predictions
-    }).to_csv(filename, index=False)
+def save_forecasts(forecasts, template_df):
+    for name, preds in forecasts.items():
+        output_df = pd.DataFrame({
+            'TIMESTAMP': template_df['TIMESTAMP'],
+            'POWER': preds
+        })
+        output_df.to_csv(f"ForecastTemplate3-{name}.csv", index=False)
 
-save_forecast("ForecastTemplate3-LR.csv", y_pred_lr)
-save_forecast("ForecastTemplate3-SVR.csv", y_pred_svr)
-save_forecast("ForecastTemplate3-ANN.csv", y_pred_ann)
-save_forecast("ForecastTemplate3-RNN.csv", y_pred_rnn)
+def plot_forecasts(forecast_df, solution_df, preds1, preds2, name1, name2):
+    plt.figure(figsize=(12, 6))
+    plt.plot(forecast_df['TIMESTAMP'], preds1, label=f'{name1} Forecast')
+    plt.plot(forecast_df['TIMESTAMP'], preds2, label=f'{name2} Forecast')
+    plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
+    plt.xlabel("Time")
+    plt.ylabel("POWER")
+    plt.title(f"{name1} vs {name2} Forecast")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.xticks(rotation=45)
+    plt.show()
 
-# RMSE
-true_power = solution_df['POWER'].values
-rmse_lr = sqrt(mean_squared_error(true_power, y_pred_lr))
-rmse_svr = sqrt(mean_squared_error(true_power, y_pred_svr))
-rmse_ann = sqrt(mean_squared_error(true_power, y_pred_ann))
-rmse_rnn = sqrt(mean_squared_error(true_power, y_pred_rnn))
+# Main Execution
+def main():
+    window_size = 24
 
-rmse_results_df = pd.DataFrame({
-    'Model': ['LR', 'SVR', 'ANN', 'RNN'],
-    'RMSE': [rmse_lr, rmse_svr, rmse_ann, rmse_rnn]
-})
+    train_df, solution_df, template_df, combined_df = load_and_prepare_data()
+    lagged_df = create_lag_features(combined_df, window_size)
 
-print(f"Forecast RMSE Evaluation Nov 2013")
-print(rmse_results_df.sort_values(by='RMSE'))
+    train_data = lagged_df[lagged_df['TIMESTAMP'] < '2013-11-01']
+    forecast_data = lagged_df[
+        (lagged_df['TIMESTAMP'] >= '2013-11-01') & (lagged_df['TIMESTAMP'] <= '2013-11-30 23:00:00')
+    ]
 
-# Evaluating SMAPE (more stable MAPE when values are close to zero)
-smape_lr = 100 * np.mean(2 * np.abs(y_pred_lr - true_power) / (np.abs(true_power) + np.abs(y_pred_lr) + 1e-3))
-accuracy_lr = 100 - smape_lr
-smape_svr = 100 * np.mean(2 * np.abs(y_pred_svr - true_power) / (np.abs(true_power) + np.abs(y_pred_svr) + 1e-3))
-accuracy_svr = 100 - smape_svr
-smape_ann = 100 * np.mean(2 * np.abs(y_pred_ann - true_power) / (np.abs(true_power) + np.abs(y_pred_ann) + 1e-3))
-accuracy_ann = 100 - smape_ann
-smape_rnn = 100 * np.mean(2 * np.abs(y_pred_rnn - true_power) / (np.abs(true_power) + np.abs(y_pred_rnn) + 1e-3))
-accuracy_rnn = 100 - smape_rnn
-print(f"LR Prediction Accuracy (SMAPE): {accuracy_lr:.2f}%")
-print(f"SVR Prediction Accuracy (SMAPE): {accuracy_svr:.2f}%")
-print(f"ANN Prediction Accuracy (SMAPE): {accuracy_ann:.2f}%")
-print(f"RNN Prediction Accuracy (SMAPE): {accuracy_rnn:.2f}%")
+    x_train = train_data.drop(columns=['TIMESTAMP', 'POWER'])
+    y_train = train_data[['POWER']].values
+    x_pred = forecast_data.drop(columns=['TIMESTAMP', 'POWER'])
 
-# Plot LR vs SVR
-plt.figure(figsize=(12, 6))
-plt.plot(forecast_df['TIMESTAMP'], y_pred_lr, label='LR Forecast', color='blue')
-plt.plot(forecast_df['TIMESTAMP'], y_pred_svr, label='SVR Forecast', color='red')
-plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
-plt.xlabel("Time")
-plt.ylabel("POWER")
-plt.title("LR vs SVR Forecast for November 2013")
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
-plt.xticks(rotation=45)
-plt.show()
+    x_train_scaled, y_train_scaled, feature_scaler, target_scaler = scale_data(x_train, y_train)
+    x_pred_scaled = feature_scaler.transform(x_pred)
 
-# Plot ANN vs RNN
-plt.figure(figsize=(12, 6))
-plt.plot(forecast_df['TIMESTAMP'], y_pred_ann, label='ANN Forecast', color='green')
-plt.plot(forecast_df['TIMESTAMP'], y_pred_rnn, label='RNN Forecast', color='orange')
-plt.plot(solution_df['TIMESTAMP'], solution_df['POWER'], label='True Power', color='black')
-plt.xlabel("Time")
-plt.ylabel("POWER")
-plt.title("ANN vs RNN Forecast for November 2013")
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
-plt.xticks(rotation=45)
-plt.show()
+    models = train_models(x_train_scaled, y_train_scaled)
+    rnn_model = train_rnn_model(x_train_scaled, y_train_scaled, window_size)
+
+    forecasts = forecast(models, x_pred_scaled, target_scaler, rnn_model, window_size)
+    save_forecasts(forecasts, template_df)
+
+    results = evaluate_forecasts(forecasts, solution_df['POWER'].values)
+    print("Forecast RMSE and SMAPE Evaluation for Nov 2013")
+    print(results)
+
+    # Plotting the models
+    plot_forecasts(forecast_data, solution_df, forecasts['LR'], forecasts['SVR'], 'LR', 'SVR')
+    plot_forecasts(forecast_data, solution_df, forecasts['ANN'], forecasts['RNN'], 'ANN', 'RNN')
+
+if __name__ == "__main__":
+    main()
